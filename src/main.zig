@@ -5,11 +5,11 @@ const testing = std.testing;
 const expect = testing.expect;
 const print = std.debug.print;
 
-const CsvResultType = enum {
+const CsvTokenType = enum {
     field, row_end, eof
 };
 
-const CsvResult = union(CsvResultType) {
+const CsvToken = union(CsvTokenType) {
     field: []u8, row_end: void, eof: void
 };
 
@@ -19,6 +19,7 @@ const CsvConfig = struct {
     colSeparator: u8 = ',', rowSeparator: u8 = '\n', initialBufferSize: usize = 1024
 };
 
+/// Tokenizes input from reader into stream of CsvTokens
 pub fn CsvTokenizer(comptime Reader: type) type {
     const Status = enum {
         Initial, RowStart, Field, QuotedFieldEnd, RowEnd, Eof, Finished
@@ -51,7 +52,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             self.allocator.free(self.buffer);
         }
 
-        fn next(self: *Self) !CsvResult {
+        fn next(self: *Self) !CsvToken {
             print("STATUS: {}\n", .{self.status});
             switch (self.status) {
                 .Initial => {
@@ -62,7 +63,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                 .RowStart => {
                     if (self.current.len == 0) {
                         self.status = .Eof;
-                        return CsvResult{ .eof = {} };
+                        return CsvToken{ .eof = {} };
                     }
 
                     self.status = .Field;
@@ -101,17 +102,17 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                 .RowEnd => {
                     if (self.current.len == 0) {
                         self.status = .Eof;
-                        return CsvResult{ .row_end = {} };
+                        return CsvToken{ .row_end = {} };
                     }
 
                     self.current = self.current[1..];
                     self.status = .RowStart;
 
-                    return CsvResult{ .row_end = {} };
+                    return CsvToken{ .row_end = {} };
                 },
                 .Eof => {
                     self.status = .Finished;
-                    return CsvResult{ .eof = {} };
+                    return CsvToken{ .eof = {} };
                 },
                 .Finished => {},
             }
@@ -126,7 +127,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             self.current = self.buffer[0..len];
         }
 
-        fn parseField(self: *Self) CsvError!CsvResult {
+        fn parseField(self: *Self) CsvError!CsvToken {
             // print("PARSE {}\n", .{self});
             var idx: usize = 0;
             while (idx < self.current.len) : (idx += 1) {
@@ -136,14 +137,14 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                         const field = self.current[0..idx];
                         self.current = self.current[idx + 1 ..];
 
-                        return CsvResult{ .field = field };
+                        return CsvToken{ .field = field };
                     },
                     '\n' => { // self.rowSeparator
                         const field = self.current[0..idx];
                         self.current = self.current[idx..];
                         self.status = .RowEnd;
 
-                        return CsvResult{ .field = field };
+                        return CsvToken{ .field = field };
                     },
                     '"' => {
                         if (idx != 0) {
@@ -156,7 +157,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                         self.current = self.current[fieldEnd..];
                         self.status = .QuotedFieldEnd;
 
-                        return CsvResult{ .field = field };
+                        return CsvToken{ .field = field };
                     },
                     else => {},
                 }
@@ -205,19 +206,19 @@ test "Read single simple record from file" {
     defer csv.deinit();
 
     const field1 = try csv.next();
-    expect(@as(CsvResultType, field1) == CsvResultType.field);
+    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
     expect(mem.eql(u8, field1.field, "1"));
     // print("FIELD: {}\n", .{fields[1]});
 
     const field2 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
     expect(mem.eql(u8, field2.field, "abc"));
 
     const row1 = try csv.next();
-    expect(@as(CsvResultType, row1) == CsvResultType.row_end);
+    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
 
     const end = try csv.next();
-    expect(@as(CsvResultType, end) == CsvResultType.eof);
+    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
 }
 
 test "Read multiple simple records from file" {
@@ -228,29 +229,29 @@ test "Read multiple simple records from file" {
     defer csv.deinit();
 
     const field1 = try csv.next();
-    expect(@as(CsvResultType, field1) == CsvResultType.field);
+    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
     expect(mem.eql(u8, field1.field, "1"));
 
     const field2 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
     expect(mem.eql(u8, field2.field, "abc"));
 
     const row1 = try csv.next();
-    expect(@as(CsvResultType, row1) == CsvResultType.row_end);
+    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
 
     const field3 = try csv.next();
-    expect(@as(CsvResultType, field3) == CsvResultType.field);
+    expect(@as(CsvTokenType, field3) == CsvTokenType.field);
     expect(mem.eql(u8, field3.field, "2"));
 
     const field4 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
     expect(mem.eql(u8, field4.field, "def ghc"));
 
     const row2 = try csv.next();
-    expect(@as(CsvResultType, row2) == CsvResultType.row_end);
+    expect(@as(CsvTokenType, row2) == CsvTokenType.row_end);
 
     const end = try csv.next();
-    expect(@as(CsvResultType, end) == CsvResultType.eof);
+    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
 }
 
 test "Read quoted fields" {
@@ -261,29 +262,29 @@ test "Read quoted fields" {
     defer csv.deinit();
 
     const field1 = try csv.next();
-    expect(@as(CsvResultType, field1) == CsvResultType.field);
+    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
     expect(mem.eql(u8, field1.field, "1"));
 
     const field2 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
     expect(mem.eql(u8, field2.field, "def ghc"));
 
     const row1 = try csv.next();
-    expect(@as(CsvResultType, row1) == CsvResultType.row_end);
+    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
 
     const field3 = try csv.next();
-    expect(@as(CsvResultType, field3) == CsvResultType.field);
+    expect(@as(CsvTokenType, field3) == CsvTokenType.field);
     expect(mem.eql(u8, field3.field, "2"));
 
     const field4 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
     expect(mem.eql(u8, field4.field, "abc \"\"def\"\""));
 
     const row2 = try csv.next();
-    expect(@as(CsvResultType, row2) == CsvResultType.row_end);
+    expect(@as(CsvTokenType, row2) == CsvTokenType.row_end);
 
     const end = try csv.next();
-    expect(@as(CsvResultType, end) == CsvResultType.eof);
+    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
 }
 
 test "some field is longer than buffer" {
