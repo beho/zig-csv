@@ -6,11 +6,11 @@ const expect = testing.expect;
 const print = std.debug.print;
 
 const CsvResultType = enum {
-    field, row, eof
+    field, row_end, eof
 };
 
 const CsvResult = union(CsvResultType) {
-    field: []u8, row: []u8, eof: void
+    field: []u8, row_end: void, eof: void
 };
 
 const CsvError = error{ ShortBuffer, MisplacedQuote, NoDelimiterAfterField };
@@ -19,9 +19,9 @@ const CsvConfig = struct {
     colSeparator: u8 = ',', rowSeparator: u8 = '\n', initialBufferSize: usize = 1024
 };
 
-pub fn CsvIterator(comptime Reader: type) type {
+pub fn CsvTokenizer(comptime Reader: type) type {
     const Status = enum {
-        Initial, ReadingField, Finished
+        Initial, RowStart, Field, QuotedFieldEnd, RowEnd, Eof, Finished
     };
 
     return struct {
@@ -37,34 +37,81 @@ pub fn CsvIterator(comptime Reader: type) type {
 
         status: Status = .Initial,
 
-        fn init(reader: Reader, allocator: *Allocator, config: CsvConfig) Self {
-            return .{
+        fn init(reader: Reader, allocator: *Allocator, config: CsvConfig) !Self {
+            var buffer = try allocator.alloc(u8, config.initialBufferSize);
+            return Self{
                 .config = config,
                 .reader = reader,
                 .allocator = allocator,
+                .buffer = buffer,
             };
         }
 
         fn deinit(self: Self) void {
-            if (self.status == .ReadingField or self.status == .Finished) {
-                self.allocator.free(self.buffer);
-            }
+            self.allocator.free(self.buffer);
         }
 
         fn next(self: *Self) !CsvResult {
+            print("STATUS: {}\n", .{self.status});
             switch (self.status) {
                 .Initial => {
-                    self.buffer = try self.allocator.alloc(u8, self.config.initialBufferSize);
-                    self.status = .ReadingField;
                     _ = try self.read();
-                    return try self.parse();
+                    self.status = .RowStart;
+                    return self.next();
                 },
-                .ReadingField => {
+                .RowStart => {
                     if (self.current.len == 0) {
-                        self.status = .Finished;
+                        self.status = .Eof;
                         return CsvResult{ .eof = {} };
                     }
-                    return try self.parse();
+
+                    self.status = .Field;
+                    return self.next();
+                },
+                .Field => {
+                    if (self.current.len == 0) {
+                        self.status = .RowEnd;
+                        return self.next();
+                    }
+
+                    return try self.parseField();
+                },
+                .QuotedFieldEnd => {
+                    self.current = self.current[1..];
+
+                    if (self.current.len == 0) {
+                        self.status = .RowEnd;
+                        return self.next();
+                    }
+
+                    print("QuotedFieldEnd: {c}\n", .{self.current[0]});
+                    switch (self.current[0]) {
+                        '\n' => {
+                            self.status = .RowEnd;
+                        },
+                        ',' => {
+                            self.current = self.current[1..];
+                            self.status = .Field;
+                        },
+                        else => unreachable,
+                    }
+
+                    return self.next();
+                },
+                .RowEnd => {
+                    if (self.current.len == 0) {
+                        self.status = .Eof;
+                        return CsvResult{ .row_end = {} };
+                    }
+
+                    self.current = self.current[1..];
+                    self.status = .RowStart;
+
+                    return CsvResult{ .row_end = {} };
+                },
+                .Eof => {
+                    self.status = .Finished;
+                    return CsvResult{ .eof = {} };
                 },
                 .Finished => {},
             }
@@ -79,11 +126,11 @@ pub fn CsvIterator(comptime Reader: type) type {
             self.current = self.buffer[0..len];
         }
 
-        fn parse(self: *Self) CsvError!CsvResult {
+        fn parseField(self: *Self) CsvError!CsvResult {
             // print("PARSE {}\n", .{self});
             var idx: usize = 0;
             while (idx < self.current.len) : (idx += 1) {
-                print("IDX: {}={c}\n", .{ idx, self.current[idx] });
+                print("current[{}]={c}\n", .{ idx, self.current[idx] });
                 switch (self.current[idx]) {
                     ',' => { // self.colSeparator
                         const field = self.current[0..idx];
@@ -93,33 +140,23 @@ pub fn CsvIterator(comptime Reader: type) type {
                     },
                     '\n' => { // self.rowSeparator
                         const field = self.current[0..idx];
-                        self.current = self.current[idx + 1 ..];
+                        self.current = self.current[idx..];
+                        self.status = .RowEnd;
 
-                        return CsvResult{ .row = field };
+                        return CsvResult{ .field = field };
                     },
                     '"' => {
                         if (idx != 0) {
                             return CsvError.MisplacedQuote;
                         }
 
-                        const fieldEnd = try quotedFieldEnd(self, self.current[idx + 1 ..]);
-                        const field = self.current[1 .. fieldEnd + 1];
+                        const fieldEnd = 1 + try quotedFieldEnd(self, self.current[1..]);
+                        const field = self.current[1..fieldEnd];
 
-                        const isEndOfBuffer = fieldEnd + 2 >= self.current.len;
-                        const isRow = isEndOfBuffer or self.current[fieldEnd + 2] == '\n';
+                        self.current = self.current[fieldEnd..];
+                        self.status = .QuotedFieldEnd;
 
-                        if (isRow) {
-                            if (isEndOfBuffer) {
-                                self.current = self.current[fieldEnd + 2 ..];
-                            } else {
-                                self.current = self.current[fieldEnd + 3 ..];
-                            }
-
-                            return CsvResult{ .row = field };
-                        } else {
-                            self.current = self.current[fieldEnd + 3 ..];
-                            return CsvResult{ .field = field };
-                        }
+                        return CsvResult{ .field = field };
                     },
                     else => {},
                 }
@@ -156,7 +193,7 @@ test "Create iterator for file reader" {
     const file = try std.fs.cwd().openFile("test/test-1.csv", .{});
     defer file.close();
     const reader = file.reader();
-    const csv = &CsvIterator(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{});
+    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{}));
     defer csv.deinit();
 }
 
@@ -164,7 +201,7 @@ test "Read single simple record from file" {
     const file = try std.fs.cwd().openFile("test/test-1.csv", .{});
     defer file.close();
     const reader = file.reader();
-    const csv = &CsvIterator(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{});
+    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{}));
     defer csv.deinit();
 
     const field1 = try csv.next();
@@ -173,8 +210,11 @@ test "Read single simple record from file" {
     // print("FIELD: {}\n", .{fields[1]});
 
     const field2 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.row);
-    expect(mem.eql(u8, field2.row, "abc"));
+    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(mem.eql(u8, field2.field, "abc"));
+
+    const row1 = try csv.next();
+    expect(@as(CsvResultType, row1) == CsvResultType.row_end);
 
     const end = try csv.next();
     expect(@as(CsvResultType, end) == CsvResultType.eof);
@@ -184,7 +224,7 @@ test "Read multiple simple records from file" {
     const file = try std.fs.cwd().openFile("test/test-2.csv", .{});
     defer file.close();
     const reader = file.reader();
-    const csv = &CsvIterator(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{});
+    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{}));
     defer csv.deinit();
 
     const field1 = try csv.next();
@@ -192,16 +232,22 @@ test "Read multiple simple records from file" {
     expect(mem.eql(u8, field1.field, "1"));
 
     const field2 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.row);
-    expect(mem.eql(u8, field2.row, "abc"));
+    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(mem.eql(u8, field2.field, "abc"));
+
+    const row1 = try csv.next();
+    expect(@as(CsvResultType, row1) == CsvResultType.row_end);
 
     const field3 = try csv.next();
     expect(@as(CsvResultType, field3) == CsvResultType.field);
     expect(mem.eql(u8, field3.field, "2"));
 
     const field4 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.row);
-    expect(mem.eql(u8, field4.row, "def ghc"));
+    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(mem.eql(u8, field4.field, "def ghc"));
+
+    const row2 = try csv.next();
+    expect(@as(CsvResultType, row2) == CsvResultType.row_end);
 
     const end = try csv.next();
     expect(@as(CsvResultType, end) == CsvResultType.eof);
@@ -211,7 +257,7 @@ test "Read quoted fields" {
     const file = try std.fs.cwd().openFile("test/test-4.csv", .{});
     defer file.close();
     const reader = file.reader();
-    const csv = &CsvIterator(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{});
+    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{}));
     defer csv.deinit();
 
     const field1 = try csv.next();
@@ -219,17 +265,22 @@ test "Read quoted fields" {
     expect(mem.eql(u8, field1.field, "1"));
 
     const field2 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.row);
-    print("FIELD: {}\n", .{field2.row});
-    expect(mem.eql(u8, field2.row, "def ghc"));
+    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(mem.eql(u8, field2.field, "def ghc"));
+
+    const row1 = try csv.next();
+    expect(@as(CsvResultType, row1) == CsvResultType.row_end);
 
     const field3 = try csv.next();
     expect(@as(CsvResultType, field3) == CsvResultType.field);
     expect(mem.eql(u8, field3.field, "2"));
 
     const field4 = try csv.next();
-    expect(@as(CsvResultType, field2) == CsvResultType.row);
-    expect(mem.eql(u8, field4.row, "abc \"\"def\"\""));
+    expect(@as(CsvResultType, field2) == CsvResultType.field);
+    expect(mem.eql(u8, field4.field, "abc \"\"def\"\""));
+
+    const row2 = try csv.next();
+    expect(@as(CsvResultType, row2) == CsvResultType.row_end);
 
     const end = try csv.next();
     expect(@as(CsvResultType, end) == CsvResultType.eof);
@@ -239,7 +290,7 @@ test "some field is longer than buffer" {
     const file = try std.fs.cwd().openFile("test/test-error-short-buffer.csv", .{});
     defer file.close();
     const reader = file.reader();
-    const csv = &CsvIterator(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{ .initialBufferSize = 9 });
+    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{ .initialBufferSize = 9 }));
     defer csv.deinit();
 
     const field1 = csv.next();
@@ -249,3 +300,5 @@ test "some field is longer than buffer" {
         expect(err == CsvError.ShortBuffer);
     }
 }
+
+// TODO test last line with new line and without
