@@ -54,14 +54,19 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                 print("STATUS: {}\n", .{self.status});
                 switch (self.status) {
                     .Initial => {
-                        _ = try self.read();
-                        self.status = .RowStart;
+                        const hasData = try self.read();
+
+                        self.status = if (hasData) .RowStart else .Eof;
                         continue;
                     },
                     .RowStart => {
                         if (self.current.len == 0) {
-                            self.status = .Eof;
-                            return CsvToken{ .eof = {} };
+                            const hasData = try self.read();
+
+                            if (!hasData) {
+                                self.status = .Eof;
+                                continue;
+                            }
                         }
 
                         self.status = .Field;
@@ -69,8 +74,12 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                     },
                     .Field => {
                         if (self.current.len == 0) {
-                            self.status = .RowEnd;
-                            continue;
+                            const hasData = try self.read();
+
+                            if (!hasData) {
+                                self.status = .RowEnd;
+                                continue;
+                            }
                         }
 
                         return try self.parseField();
@@ -79,8 +88,12 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                         self.current = self.current[1..];
 
                         if (self.current.len == 0) {
-                            self.status = .RowEnd;
-                            continue;
+                            const hasData = try self.read();
+
+                            if (!hasData) {
+                                self.status = .RowEnd;
+                                continue;
+                            }
                         }
 
                         print("QuotedFieldEnd: {c}\n", .{self.current[0]});
@@ -99,8 +112,12 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                     },
                     .RowEnd => {
                         if (self.current.len == 0) {
-                            self.status = .Eof;
-                            return CsvToken{ .row_end = {} };
+                            const hasData = try self.read();
+
+                            if (!hasData) {
+                                self.status = .Eof;
+                                return CsvToken{ .row_end = {} };
+                            }
                         }
 
                         self.current = self.current[1..];
@@ -119,11 +136,11 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             unreachable;
         }
 
-        fn read(self: *Self) !void {
+        fn read(self: *Self) !bool {
             const len = try self.reader.read(self.buffer);
-            // TODO handle len == 0
-
             self.current = self.buffer[0..len];
+
+            return len > 0;
         }
 
         fn parseField(self: *Self) CsvError!CsvToken {
