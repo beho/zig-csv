@@ -50,68 +50,70 @@ pub fn CsvTokenizer(comptime Reader: type) type {
         }
 
         pub fn next(self: *Self) !CsvToken {
-            print("STATUS: {}\n", .{self.status});
-            switch (self.status) {
-                .Initial => {
-                    _ = try self.read();
-                    self.status = .RowStart;
-                    return self.next();
-                },
-                .RowStart => {
-                    if (self.current.len == 0) {
-                        self.status = .Eof;
-                        return CsvToken{ .eof = {} };
-                    }
+            while (true) {
+                print("STATUS: {}\n", .{self.status});
+                switch (self.status) {
+                    .Initial => {
+                        _ = try self.read();
+                        self.status = .RowStart;
+                        continue;
+                    },
+                    .RowStart => {
+                        if (self.current.len == 0) {
+                            self.status = .Eof;
+                            return CsvToken{ .eof = {} };
+                        }
 
-                    self.status = .Field;
-                    return self.next();
-                },
-                .Field => {
-                    if (self.current.len == 0) {
-                        self.status = .RowEnd;
-                        return self.next();
-                    }
-
-                    return try self.parseField();
-                },
-                .QuotedFieldEnd => {
-                    self.current = self.current[1..];
-
-                    if (self.current.len == 0) {
-                        self.status = .RowEnd;
-                        return self.next();
-                    }
-
-                    print("QuotedFieldEnd: {c}\n", .{self.current[0]});
-                    switch (self.current[0]) {
-                        '\n' => {
+                        self.status = .Field;
+                        continue;
+                    },
+                    .Field => {
+                        if (self.current.len == 0) {
                             self.status = .RowEnd;
-                        },
-                        ',' => {
-                            self.current = self.current[1..];
-                            self.status = .Field;
-                        },
-                        else => unreachable,
-                    }
+                            continue;
+                        }
 
-                    return self.next();
-                },
-                .RowEnd => {
-                    if (self.current.len == 0) {
-                        self.status = .Eof;
+                        return try self.parseField();
+                    },
+                    .QuotedFieldEnd => {
+                        self.current = self.current[1..];
+
+                        if (self.current.len == 0) {
+                            self.status = .RowEnd;
+                            continue;
+                        }
+
+                        print("QuotedFieldEnd: {c}\n", .{self.current[0]});
+                        switch (self.current[0]) {
+                            '\n' => {
+                                self.status = .RowEnd;
+                                continue;
+                            },
+                            ',' => {
+                                self.current = self.current[1..];
+                                self.status = .Field;
+                                continue;
+                            },
+                            else => unreachable,
+                        }
+                    },
+                    .RowEnd => {
+                        if (self.current.len == 0) {
+                            self.status = .Eof;
+                            return CsvToken{ .row_end = {} };
+                        }
+
+                        self.current = self.current[1..];
+                        self.status = .RowStart;
+
                         return CsvToken{ .row_end = {} };
-                    }
-
-                    self.current = self.current[1..];
-                    self.status = .RowStart;
-
-                    return CsvToken{ .row_end = {} };
-                },
-                .Eof => {
-                    self.status = .Finished;
-                    return CsvToken{ .eof = {} };
-                },
-                .Finished => {},
+                    },
+                    .Eof => {
+                        self.status = .Finished;
+                        return CsvToken{ .eof = {} };
+                    },
+                    .Finished => {},
+                }
             }
 
             unreachable;

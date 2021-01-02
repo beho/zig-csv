@@ -104,6 +104,16 @@ test "Read quoted fields" {
     expect(@as(CsvTokenType, end) == CsvTokenType.eof);
 }
 
+test "File is empty" {
+    const file = try std.fs.cwd().openFile("test/resources/test-empty.csv", .{});
+    defer file.close();
+    const csv = &try getTokenizer(file, .{});
+    defer csv.deinit();
+
+    const end = try csv.next();
+    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
+}
+
 test "some field is longer than buffer" {
     const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer.csv", .{});
     defer file.close();
