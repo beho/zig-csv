@@ -1,21 +1,18 @@
 const std = @import("std");
-const mem = std.mem;
-const Allocator = mem.Allocator;
-const testing = std.testing;
-const expect = testing.expect;
+const Allocator = std.mem.Allocator;
 const print = std.debug.print;
 
-const CsvTokenType = enum {
+pub const CsvTokenType = enum {
     field, row_end, eof
 };
 
-const CsvToken = union(CsvTokenType) {
+pub const CsvToken = union(CsvTokenType) {
     field: []u8, row_end: void, eof: void
 };
 
-const CsvError = error{ ShortBuffer, MisplacedQuote, NoDelimiterAfterField };
+pub const CsvError = error{ ShortBuffer, MisplacedQuote, NoDelimiterAfterField };
 
-const CsvConfig = struct {
+pub const CsvConfig = struct {
     colSeparator: u8 = ',', rowSeparator: u8 = '\n', initialBufferSize: usize = 1024
 };
 
@@ -38,7 +35,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
 
         status: Status = .Initial,
 
-        fn init(reader: Reader, allocator: *Allocator, config: CsvConfig) !Self {
+        pub fn init(reader: Reader, allocator: *Allocator, config: CsvConfig) !Self {
             var buffer = try allocator.alloc(u8, config.initialBufferSize);
             return Self{
                 .config = config,
@@ -48,11 +45,11 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             };
         }
 
-        fn deinit(self: Self) void {
+        pub fn deinit(self: Self) void {
             self.allocator.free(self.buffer);
         }
 
-        fn next(self: *Self) !CsvToken {
+        pub fn next(self: *Self) !CsvToken {
             print("STATUS: {}\n", .{self.status});
             switch (self.status) {
                 .Initial => {
@@ -189,117 +186,3 @@ pub fn CsvTokenizer(comptime Reader: type) type {
         }
     };
 }
-
-test "Create iterator for file reader" {
-    const file = try std.fs.cwd().openFile("test/test-1.csv", .{});
-    defer file.close();
-    const reader = file.reader();
-    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{}));
-    defer csv.deinit();
-}
-
-test "Read single simple record from file" {
-    const file = try std.fs.cwd().openFile("test/test-1.csv", .{});
-    defer file.close();
-    const reader = file.reader();
-    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{}));
-    defer csv.deinit();
-
-    const field1 = try csv.next();
-    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
-    expect(mem.eql(u8, field1.field, "1"));
-    // print("FIELD: {}\n", .{fields[1]});
-
-    const field2 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field2.field, "abc"));
-
-    const row1 = try csv.next();
-    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
-
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
-}
-
-test "Read multiple simple records from file" {
-    const file = try std.fs.cwd().openFile("test/test-2.csv", .{});
-    defer file.close();
-    const reader = file.reader();
-    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{}));
-    defer csv.deinit();
-
-    const field1 = try csv.next();
-    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
-    expect(mem.eql(u8, field1.field, "1"));
-
-    const field2 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field2.field, "abc"));
-
-    const row1 = try csv.next();
-    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
-
-    const field3 = try csv.next();
-    expect(@as(CsvTokenType, field3) == CsvTokenType.field);
-    expect(mem.eql(u8, field3.field, "2"));
-
-    const field4 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field4.field, "def ghc"));
-
-    const row2 = try csv.next();
-    expect(@as(CsvTokenType, row2) == CsvTokenType.row_end);
-
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
-}
-
-test "Read quoted fields" {
-    const file = try std.fs.cwd().openFile("test/test-4.csv", .{});
-    defer file.close();
-    const reader = file.reader();
-    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{}));
-    defer csv.deinit();
-
-    const field1 = try csv.next();
-    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
-    expect(mem.eql(u8, field1.field, "1"));
-
-    const field2 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field2.field, "def ghc"));
-
-    const row1 = try csv.next();
-    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
-
-    const field3 = try csv.next();
-    expect(@as(CsvTokenType, field3) == CsvTokenType.field);
-    expect(mem.eql(u8, field3.field, "2"));
-
-    const field4 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field4.field, "abc \"\"def\"\""));
-
-    const row2 = try csv.next();
-    expect(@as(CsvTokenType, row2) == CsvTokenType.row_end);
-
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
-}
-
-test "some field is longer than buffer" {
-    const file = try std.fs.cwd().openFile("test/test-error-short-buffer.csv", .{});
-    defer file.close();
-    const reader = file.reader();
-    const csv = &(try CsvTokenizer(std.fs.File.Reader).init(reader, testing.allocator, CsvConfig{ .initialBufferSize = 9 }));
-    defer csv.deinit();
-
-    const field1 = csv.next();
-    if (field1) {
-        unreachable;
-    } else |err| {
-        expect(err == CsvError.ShortBuffer);
-    }
-}
-
-// TODO test last line with new line and without
