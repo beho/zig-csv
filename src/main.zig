@@ -179,7 +179,13 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                 }
             }
 
-            return CsvError.ShortBuffer;
+            // field cannot fit into buffer
+            if (self.current.len == self.buffer.len) {
+                return CsvError.ShortBuffer;
+            }
+
+            // TODO read and try again
+            unreachable;
         }
 
         fn quotedFieldEnd(self: *Self, buffer: []u8) CsvError!usize {
