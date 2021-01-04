@@ -104,6 +104,27 @@ test "Read quoted fields" {
     expect(@as(CsvTokenType, end) == CsvTokenType.eof);
 }
 
+test "Second read is necessary to obtain field" {
+    const file = try std.fs.cwd().openFile("test/resources/test-read-required-for-field.csv", .{});
+    defer file.close();
+    const csv = &try getTokenizer(file, CsvConfig{ .initialBufferSize = 6 });
+    defer csv.deinit();
+
+    const field1 = try csv.next();
+    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
+    expect(mem.eql(u8, field1.field, "12345"));
+
+    const field2 = try csv.next();
+    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
+    expect(mem.eql(u8, field2.field, "67890"));
+
+    const row1 = try csv.next();
+    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
+
+    const end = try csv.next();
+    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
+}
+
 test "File is empty" {
     const file = try std.fs.cwd().openFile("test/resources/test-empty.csv", .{});
     defer file.close();
@@ -114,7 +135,7 @@ test "File is empty" {
     expect(@as(CsvTokenType, end) == CsvTokenType.eof);
 }
 
-test "some field is longer than buffer" {
+test "Field is longer than buffer" {
     const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer.csv", .{});
     defer file.close();
     const csv = &try getTokenizer(file, CsvConfig{ .initialBufferSize = 9 });
@@ -126,6 +147,51 @@ test "some field is longer than buffer" {
     } else |err| {
         expect(err == CsvError.ShortBuffer);
     }
+}
+
+test "Quoted field is longer than buffer" {
+    const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer-quoted.csv", .{});
+    defer file.close();
+    const csv = &try getTokenizer(file, CsvConfig{ .initialBufferSize = 10 });
+    defer csv.deinit();
+
+    const field1 = csv.next();
+    if (field1) {
+        unreachable;
+    } else |err| {
+        expect(err == CsvError.ShortBuffer);
+    }
+}
+
+test "Quoted field with double quotes is longer than buffer" {
+    const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer-quoted-with-double.csv", .{});
+    defer file.close();
+    const csv = &try getTokenizer(file, CsvConfig{ .initialBufferSize = 11 });
+    defer csv.deinit();
+
+    const field1 = csv.next();
+    if (field1) {
+        unreachable;
+    } else |err| {
+        expect(err == CsvError.ShortBuffer);
+    }
+}
+
+test "Quoted field with double quotes can be read on retry" {
+    const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer-quoted-with-double.csv", .{});
+    defer file.close();
+    const csv = &try getTokenizer(file, CsvConfig{ .initialBufferSize = 13 });
+    defer csv.deinit();
+
+    const field1 = try csv.next();
+    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
+    expect(mem.eql(u8, field1.field, "1234567890\"\""));
+
+    const row1 = try csv.next();
+    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
+
+    const end = try csv.next();
+    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
 }
 
 // TODO test last line with new line and without
