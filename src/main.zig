@@ -72,28 +72,33 @@ fn CsvReader(comptime Reader: type) type {
                     if (c == ct) {
                         const s = self.current[0..pos];
                         self.current = self.current[pos..];
-                        print("{}|{}", .{ s, self.current });
+                        // print("{}|{}", .{ s, self.current });
                         return s;
                     }
                 }
             }
 
+            // print("ALL_READ: {}\n", .{self.all_read});
             return null;
         }
 
         pub fn untilClosingQuote(self: *Self, quote: u8) !?[]const u8 {
+            if (!try self.ensureData()) {
+                return null;
+            }
+
             var idx: usize = 0;
             while (idx < self.current.len) : (idx += 1) {
                 const c = self.current[idx];
-                print("IDX QUOTED: {}={c}\n", .{ idx, c });
+                // print("IDX QUOTED: {}={c}\n", .{ idx, c });
                 if (c == quote) {
                     // double quotes, shift forward
                     // print("PEEK {c}\n", .{buffer[idx + 1]});
                     if (idx < self.current.len - 1 and self.current[idx + 1] == '"') {
-                        print("DOUBLE QUOTES\n", .{});
+                        // print("DOUBLE QUOTES\n", .{});
                         idx += 1;
                     } else {
-                        print("ALL_READ {}\n", .{self.all_read});
+                        // print("ALL_READ {}\n", .{self.all_read});
                         if (!self.all_read and idx == self.current.len - 1) {
                             return null;
                         }
@@ -109,20 +114,28 @@ fn CsvReader(comptime Reader: type) type {
             return null;
         }
 
+        /// Tries to read more data from an underlying reader if buffer is not already full.
+        /// If anything was read returns true, otherwise false.
         pub fn read(self: *Self) !bool {
             const current_len = self.current.len;
+
+            if (current_len == self.buffer.len) {
+                return false;
+            }
+
             if (current_len > 0) {
                 mem.copy(u8, self.buffer, self.current);
             }
 
             const read_len = try self.reader.read(self.buffer[current_len..]);
-            print("READ: current_len={} read_len={}\n", .{ current_len, read_len });
+            // print("READ: current_len={} read_len={}\n", .{ current_len, read_len });
             self.current = self.buffer[0 .. current_len + read_len];
             self.all_read = read_len == 0;
 
-            return self.current.len > 0;
+            return read_len > 0;
         }
 
+        // Ensures that there are some data in the buffer. Returns false if no data are available
         pub inline fn ensureData(self: *Self) !bool {
             if (!self.empty()) {
                 return true;
@@ -133,6 +146,14 @@ fn CsvReader(comptime Reader: type) type {
             }
 
             return self.read();
+        }
+
+        pub fn isEof(self: *Self) !bool {
+            const read_len = try self.reader.read(self.overflow_buffer);
+            const is_eof = read_len == 0;
+            self.overflow_used = !is_eof;
+
+            return is_eof;
         }
     };
 }
@@ -173,7 +194,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
 
         pub fn next(self: *Self) !CsvToken {
             while (true) {
-                print("STATUS: {}\n", .{self.status});
+                // print("STATUS: {}\n", .{self.status});
                 switch (self.status) {
                     .Initial => {
                         const hasData = try self.reader.read();
@@ -259,10 +280,11 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             const first = (try self.reader.peek()).?;
 
             if (first != '"') {
-                // move terminal chars out
+                // move terminal chars array out
                 // try to use const field
                 var field = try self.reader.until(&[_]u8{ self.config.colSeparator, self.config.rowSeparator, '"' });
                 if (field == null) {
+                    // print("FIELD RETRY\n", .{});
                     // force read - maybe separator was not read yet
                     const hasData = try self.reader.read();
                     if (!hasData) {
@@ -277,7 +299,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
 
                 const terminator = (try self.reader.peek()).?;
 
-                print("TERMINATOR: {}\n", .{terminator});
+                // print("TERMINATOR: {}\n", .{terminator});
                 if (terminator == self.config.colSeparator) {
                     _ = try self.reader.char();
                     return CsvToken{ .field = field.? };
@@ -298,13 +320,14 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                 _ = try self.reader.char();
                 var quotedField = try self.reader.untilClosingQuote('"');
                 if (quotedField == null) {
-                    print("QUOTED RETRY\n", .{});
+                    // print("QUOTED FIELD RETRY\n", .{});
                     // force read - maybe separator was not read yet
                     const hasData = try self.reader.read();
                     if (!hasData) {
                         return CsvError.ShortBuffer;
                     }
 
+                    // this read will fill the buffer
                     quotedField = try self.reader.untilClosingQuote('"');
                     if (quotedField == null) {
                         return CsvError.ShortBuffer;
