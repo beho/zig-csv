@@ -11,6 +11,23 @@ fn getTokenizer(file: std.fs.File, config: CsvConfig) !CsvTokenizer(std.fs.File.
     return csv;
 }
 
+fn expectToken(comptime expected: CsvToken, actual: CsvToken) !void {
+    if(@enumToInt(expected) != @enumToInt(actual)) {
+        std.log.warn("Expected {} but is {}\n", .{expected, actual});
+        return error.TestFailed;
+    }
+
+    switch(expected) {
+        .field => {
+            if(!std.mem.eql(u8, expected.field, actual.field)) {
+                std.log.warn("Expected {} but is {}\n", .{expected, actual});
+                return error.TestFailed;
+            }
+        },
+        else => {}
+    }
+}
+
 test "Create iterator for file reader" {
     const file = try std.fs.cwd().openFile("test/resources/test-1.csv", .{});
     defer file.close();
@@ -24,20 +41,11 @@ test "Read single simple record from file" {
     const csv = &try getTokenizer(file, .{});
     defer csv.deinit();
 
-    const field1 = try csv.next();
-    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
-    expect(mem.eql(u8, field1.field, "1"));
-    // print("FIELD: {}\n", .{fields[1]});
+    try expectToken(CsvToken{.field = "1"}, try csv.next());
+    try expectToken(CsvToken{.field = "abc"}, try csv.next());
+    try expectToken(CsvToken{.row_end = {}}, try csv.next());
 
-    const field2 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field2.field, "abc"));
-
-    const row1 = try csv.next();
-    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
-
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
+    try expectToken(CsvToken{.eof = {}}, try csv.next());
 }
 
 test "Read multiple simple records from file" {
@@ -46,30 +54,15 @@ test "Read multiple simple records from file" {
     const csv = &try getTokenizer(file, .{});
     defer csv.deinit();
 
-    const field1 = try csv.next();
-    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
-    expect(mem.eql(u8, field1.field, "1"));
+    try expectToken(CsvToken{.field = "1"}, try csv.next());
+    try expectToken(CsvToken{.field = "abc"}, try csv.next());
+    try expectToken(CsvToken{.row_end = {}}, try csv.next());
 
-    const field2 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field2.field, "abc"));
+    try expectToken(CsvToken{.field = "2"}, try csv.next());
+    try expectToken(CsvToken{.field = "def ghc"}, try csv.next());
+    try expectToken(CsvToken{.row_end = {}}, try csv.next());
 
-    const row1 = try csv.next();
-    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
-
-    const field3 = try csv.next();
-    expect(@as(CsvTokenType, field3) == CsvTokenType.field);
-    expect(mem.eql(u8, field3.field, "2"));
-
-    const field4 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field4.field, "def ghc"));
-
-    const row2 = try csv.next();
-    expect(@as(CsvTokenType, row2) == CsvTokenType.row_end);
-
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
+    try expectToken(CsvToken{.eof = {}}, try csv.next());
 }
 
 test "Read quoted fields" {
@@ -78,30 +71,15 @@ test "Read quoted fields" {
     const csv = &try getTokenizer(file, .{});
     defer csv.deinit();
 
-    const field1 = try csv.next();
-    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
-    expect(mem.eql(u8, field1.field, "1"));
+    try expectToken(CsvToken{.field = "1"}, try csv.next());
+    try expectToken(CsvToken{.field = "def ghc"}, try csv.next());
+    try expectToken(CsvToken{.row_end = {}}, try csv.next());
 
-    const field2 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field2.field, "def ghc"));
+    try expectToken(CsvToken{.field = "2"}, try csv.next());
+    try expectToken(CsvToken{.field = "abc \"\"def\"\""}, try csv.next());
+    try expectToken(CsvToken{.row_end = {}}, try csv.next());
 
-    const row1 = try csv.next();
-    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
-
-    const field3 = try csv.next();
-    expect(@as(CsvTokenType, field3) == CsvTokenType.field);
-    expect(mem.eql(u8, field3.field, "2"));
-
-    const field4 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field4.field, "abc \"\"def\"\""));
-
-    const row2 = try csv.next();
-    expect(@as(CsvTokenType, row2) == CsvTokenType.row_end);
-
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
+    try expectToken(CsvToken{.eof = {}}, try csv.next());
 }
 
 test "Second read is necessary to obtain field" {
@@ -110,19 +88,11 @@ test "Second read is necessary to obtain field" {
     const csv = &try getTokenizer(file, CsvConfig{ .initialBufferSize = 6 });
     defer csv.deinit();
 
-    const field1 = try csv.next();
-    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
-    expect(mem.eql(u8, field1.field, "12345"));
+    try expectToken(CsvToken{.field = "12345"}, try csv.next());
+    try expectToken(CsvToken{.field = "67890"}, try csv.next());
+    try expectToken(CsvToken{.row_end = {}}, try csv.next());
 
-    const field2 = try csv.next();
-    expect(@as(CsvTokenType, field2) == CsvTokenType.field);
-    expect(mem.eql(u8, field2.field, "67890"));
-
-    const row1 = try csv.next();
-    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
-
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
+    try expectToken(CsvToken{.eof = {}}, try csv.next());
 }
 
 test "File is empty" {
@@ -131,8 +101,7 @@ test "File is empty" {
     const csv = &try getTokenizer(file, .{});
     defer csv.deinit();
 
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
+    try expectToken(CsvToken{.eof = {}}, try csv.next());
 }
 
 test "Field is longer than buffer" {
@@ -180,18 +149,13 @@ test "Quoted field with double quotes is longer than buffer" {
 test "Quoted field with double quotes can be read on retry" {
     const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer-quoted-with-double.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, CsvConfig{ .initialBufferSize = 13 });
+    const csv = &try getTokenizer(file, CsvConfig{ .initialBufferSize = 14 });
     defer csv.deinit();
 
-    const field1 = try csv.next();
-    expect(@as(CsvTokenType, field1) == CsvTokenType.field);
-    expect(mem.eql(u8, field1.field, "1234567890\"\""));
+    try expectToken(CsvToken{.field = "1234567890\"\""}, try csv.next());
+    try expectToken(CsvToken{.row_end = {}}, try csv.next());
 
-    const row1 = try csv.next();
-    expect(@as(CsvTokenType, row1) == CsvTokenType.row_end);
-
-    const end = try csv.next();
-    expect(@as(CsvTokenType, end) == CsvTokenType.eof);
+    try expectToken(CsvToken{.eof = {}}, try csv.next());
 }
 
 // TODO test last line with new line and without
