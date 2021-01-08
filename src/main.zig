@@ -4,11 +4,11 @@ const Allocator = mem.Allocator;
 const print = std.debug.print;
 
 pub const CsvTokenType = enum {
-    field, row_end, eof
+    field, row_end
 };
 
 pub const CsvToken = union(CsvTokenType) {
-    field: []const u8, row_end: void, eof: void
+    field: []const u8, row_end: void
 };
 
 pub const CsvError = error{ ShortBuffer, MisplacedQuote, NoSeparatorAfterField };
@@ -161,14 +161,14 @@ fn CsvReader(comptime Reader: type) type {
 /// Tokenizes input from reader into stream of CsvTokens
 pub fn CsvTokenizer(comptime Reader: type) type {
     const Status = enum {
-        Initial, RowStart, Field, QuotedFieldEnd, RowEnd, Eof, Finished
+        Initial, RowStart, Field, QuotedFieldEnd, RowEnd, Eof
     };
 
     return struct {
         const Self = @This();
 
         config: CsvConfig,
-        // terminalChars: [3]u8 = .{ 0, 0, '"' },
+        // terminalChars: [3]u8 = undefined,
 
         reader: CsvReader(Reader),
         allocator: *Allocator,
@@ -178,9 +178,9 @@ pub fn CsvTokenizer(comptime Reader: type) type {
         pub fn init(reader: Reader, allocator: *Allocator, config: CsvConfig) !Self {
             var buffer = try allocator.alloc(u8, config.initialBufferSize);
 
+            // self.terminalChars =
             // self.terminalChars[0] = config.colSeparator;
             // self.terminalChars[1] = config.rowSeparator;
-
             return Self{
                 .config = config,
                 .reader = CsvReader(Reader).init(reader, buffer),
@@ -192,7 +192,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             self.allocator.free(self.reader.buffer);
         }
 
-        pub fn next(self: *Self) !CsvToken {
+        pub fn next(self: *Self) !?CsvToken {
             while (true) {
                 // print("STATUS: {}\n", .{self.status});
                 switch (self.status) {
@@ -265,11 +265,8 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                         return CsvToken{ .row_end = {} };
                     },
                     .Eof => {
-                        self.status = .Finished;
-                        // TODO return null
-                        return CsvToken{ .eof = {} };
+                        return null;
                     },
-                    .Finished => {},
                 }
             }
 
