@@ -52,7 +52,7 @@ fn CsvReader(comptime Reader: type) type {
             return c;
         }
 
-        pub fn peek(self: *Self) !?u8 {
+        pub inline fn peek(self: *Self) !?u8 {
             if (!try self.ensureData()) {
                 return null;
             }
@@ -147,14 +147,6 @@ fn CsvReader(comptime Reader: type) type {
 
             return self.read();
         }
-
-        pub fn isEof(self: *Self) !bool {
-            const read_len = try self.reader.read(self.overflow_buffer);
-            const is_eof = read_len == 0;
-            self.overflow_used = !is_eof;
-
-            return is_eof;
-        }
     };
 }
 
@@ -168,7 +160,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
         const Self = @This();
 
         config: CsvConfig,
-        // terminalChars: [3]u8 = undefined,
+        terminalChars: [3]u8 = undefined,
 
         reader: CsvReader(Reader),
         allocator: *Allocator,
@@ -178,11 +170,9 @@ pub fn CsvTokenizer(comptime Reader: type) type {
         pub fn init(reader: Reader, allocator: *Allocator, config: CsvConfig) !Self {
             var buffer = try allocator.alloc(u8, config.initialBufferSize);
 
-            // self.terminalChars =
-            // self.terminalChars[0] = config.colSeparator;
-            // self.terminalChars[1] = config.rowSeparator;
             return Self{
                 .config = config,
+                .terminalChars = [_]u8{ config.colSeparator, config.rowSeparator, '"' },
                 .reader = CsvReader(Reader).init(reader, buffer),
                 .allocator = allocator,
             };
@@ -279,7 +269,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             if (first != '"') {
                 // move terminal chars array out
                 // try to use const field
-                var field = try self.reader.until(&[_]u8{ self.config.colSeparator, self.config.rowSeparator, '"' });
+                var field = try self.reader.until(&self.terminalChars);
                 if (field == null) {
                     // print("FIELD RETRY\n", .{});
                     // force read - maybe separator was not read yet
@@ -288,7 +278,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                         return CsvError.ShortBuffer;
                     }
 
-                    field = try self.reader.until(&[_]u8{ self.config.colSeparator, self.config.rowSeparator, '"' });
+                    field = try self.reader.until(&self.terminalChars);
                     if (field == null) {
                         return CsvError.ShortBuffer;
                     }
