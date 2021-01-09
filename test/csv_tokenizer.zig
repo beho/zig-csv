@@ -20,10 +20,7 @@ fn expectToken(comptime expected: CsvToken, maybeActual: ?CsvToken) !void {
 
         switch (expected) {
             .field => {
-                if (!std.mem.eql(u8, expected.field, actual.field)) {
-                    std.log.warn("Expected {} but is {}\n", .{ expected, actual });
-                    return error.TestFailed;
-                }
+                testing.expectEqualStrings(expected.field, actual.field);
             },
             else => {},
         }
