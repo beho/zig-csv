@@ -208,7 +208,6 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                                 // TODO write repro for assert with optional
                                 // const colSep = try self.reader.char();
                                 // assert(colSep == self.config.colSeparator);
-
                                 const colSep = (try self.reader.char()).?;
                                 assert(colSep == self.config.colSeparator);
 
