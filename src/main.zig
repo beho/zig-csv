@@ -14,7 +14,7 @@ pub const CsvToken = union(CsvTokenType) {
 pub const CsvError = error{ ShortBuffer, MisplacedQuote, NoSeparatorAfterField };
 
 pub const CsvConfig = struct {
-    colSeparator: u8 = ',', rowSeparator: u8 = '\n', initialBufferSize: usize = 1024
+    colSeparator: u8 = ',', rowSeparator: u8 = '\n'
 };
 
 fn CsvReader(comptime Reader: type) type {
@@ -163,23 +163,15 @@ pub fn CsvTokenizer(comptime Reader: type) type {
         terminalChars: [3]u8 = undefined,
 
         reader: CsvReader(Reader),
-        allocator: *Allocator,
 
         status: Status = .Initial,
 
-        pub fn init(reader: Reader, allocator: *Allocator, config: CsvConfig) !Self {
-            var buffer = try allocator.alloc(u8, config.initialBufferSize);
-
+        pub fn init(reader: Reader, buffer: []u8, config: CsvConfig) !Self {
             return Self{
                 .config = config,
                 .terminalChars = [_]u8{ config.colSeparator, config.rowSeparator, '"' },
                 .reader = CsvReader(Reader).init(reader, buffer),
-                .allocator = allocator,
             };
-        }
-
-        pub fn deinit(self: Self) void {
-            self.allocator.free(self.reader.buffer);
         }
 
         pub fn next(self: *Self) !?CsvToken {
