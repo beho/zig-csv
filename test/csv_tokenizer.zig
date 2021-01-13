@@ -77,7 +77,7 @@ test "Read quoted fields" {
     try expectToken(CsvToken{ .row_end = {} }, try csv.next());
 
     try expectToken(CsvToken{ .field = "2" }, try csv.next());
-    try expectToken(CsvToken{ .field = "abc \"\"def\"\"" }, try csv.next());
+    try expectToken(CsvToken{ .field = "abc \"def\"" }, try csv.next());
     try expectToken(CsvToken{ .row_end = {} }, try csv.next());
 
     expect((try csv.next()) == null);
@@ -147,7 +147,7 @@ test "Quoted field with double quotes can be read on retry" {
     defer file.close();
     const csv = &try getTokenizer(file, default_buffer[0..14], .{});
 
-    try expectToken(CsvToken{ .field = "1234567890\"\"" }, try csv.next());
+    try expectToken(CsvToken{ .field = "1234567890\"" }, try csv.next());
     try expectToken(CsvToken{ .row_end = {} }, try csv.next());
 
     expect((try csv.next()) == null);

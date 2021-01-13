@@ -17,6 +17,10 @@ pub const CsvConfig = struct {
     colSep: u8 = ',', rowSep: u8 = '\n', quote: u8 = '"'
 };
 
+const QuoteFieldReadResult = struct {
+    value: []u8, contains_quotes: bool
+};
+
 fn CsvReader(comptime Reader: type) type {
 
     // TODO comptime
@@ -60,7 +64,7 @@ fn CsvReader(comptime Reader: type) type {
             return self.current[0];
         }
 
-        pub fn until(self: *Self, terminators: []const u8) !?[]const u8 {
+        pub fn until(self: *Self, terminators: []const u8) !?[]u8 {
             if (!try self.ensureData()) {
                 return null;
             }
@@ -81,12 +85,13 @@ fn CsvReader(comptime Reader: type) type {
             return null;
         }
 
-        pub fn untilClosingQuote(self: *Self, quote: u8) !?[]const u8 {
+        pub fn untilClosingQuote(self: *Self, quote: u8) !?QuoteFieldReadResult {
             if (!try self.ensureData()) {
                 return null;
             }
 
             var idx: usize = 0;
+            var contains_quotes: bool = false;
             while (idx < self.current.len) : (idx += 1) {
                 const c = self.current[idx];
                 // print("IDX QUOTED: {}={c}\n", .{ idx, c });
@@ -95,6 +100,7 @@ fn CsvReader(comptime Reader: type) type {
                     // print("PEEK {c}\n", .{buffer[idx + 1]});
                     if (idx < self.current.len - 1 and self.current[idx + 1] == '"') {
                         // print("DOUBLE QUOTES\n", .{});
+                        contains_quotes = true;
                         idx += 1;
                     } else {
                         // print("ALL_READ {}\n", .{self.all_read});
@@ -105,7 +111,7 @@ fn CsvReader(comptime Reader: type) type {
                         const s = self.current[0..idx];
                         self.current = self.current[idx..];
 
-                        return s;
+                        return QuoteFieldReadResult{ .value = s, .contains_quotes = contains_quotes };
                     }
                 }
             }
@@ -194,7 +200,8 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                     },
                     .QuotedFieldEnd => blk: {
                         // read closing quotes
-                        _ = try self.reader.char();
+                        const quote = try self.reader.char();
+                        assert(quote == self.config.quote);
 
                         if (!try self.reader.ensureData()) {
                             break :blk Status.RowEnd;
@@ -284,7 +291,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                     return CsvToken{ .field = field.? };
                 }
 
-                if (terminator == '"') {
+                if (terminator == self.config.quote) {
                     return CsvError.MisplacedQuote;
                 }
 
@@ -292,7 +299,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             } else {
                 // consume opening quote
                 _ = try self.reader.char();
-                var quotedField = try self.reader.untilClosingQuote('"');
+                var quotedField = try self.reader.untilClosingQuote(self.config.quote);
                 if (quotedField == null) {
                     // force read - maybe separator was not read yet
                     const hasData = try self.reader.read();
@@ -301,14 +308,34 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                     }
 
                     // this read will fill the buffer
-                    quotedField = try self.reader.untilClosingQuote('"');
+                    quotedField = try self.reader.untilClosingQuote(self.config.quote);
                     if (quotedField == null) {
                         return CsvError.ShortBuffer;
                     }
                 }
 
                 self.status = .QuotedFieldEnd;
-                return CsvToken{ .field = quotedField.? };
+
+                const field = quotedField.?;
+                if (!field.contains_quotes) {
+                    return CsvToken{ .field = field.value };
+                } else {
+                    // walk the field and remove double quotes by shifting bytes
+                    const value = field.value;
+                    var diff: u64 = 0;
+                    var idx: usize = 0;
+                    while (idx < value.len) : (idx += 1) {
+                        const c = value[idx];
+                        value[idx - diff] = c;
+
+                        if (c == self.config.quote) {
+                            diff += 1;
+                            idx += 1;
+                        }
+                    }
+
+                    return CsvToken{ .field = value[0 .. value.len - diff] };
+                }
             }
         }
     };
