@@ -14,16 +14,16 @@ pub const CsvToken = union(CsvTokenType) {
 pub const CsvError = error{ ShortBuffer, MisplacedQuote, NoSeparatorAfterField };
 
 pub const CsvConfig = struct {
-    colSeparator: u8 = ',', rowSeparator: u8 = '\n'
+    colSep: u8 = ',', rowSep: u8 = '\n', quote: u8 = '"'
 };
 
 fn CsvReader(comptime Reader: type) type {
 
     // TODO comptime
     return struct {
-        buffer: []u8 = undefined,
-        current: []u8 = undefined,
-        // pos: usize = 0,
+        buffer: []u8,
+        current: []u8,
+
         reader: Reader,
         all_read: bool = false,
 
@@ -68,7 +68,6 @@ fn CsvReader(comptime Reader: type) type {
             for (self.current) |c, pos| {
                 // TODO inline
                 for (terminators) |ct| {
-                    // print("{c}=={}\n", .{ c, ct });
                     if (c == ct) {
                         const s = self.current[0..pos];
                         self.current = self.current[pos..];
@@ -129,6 +128,7 @@ fn CsvReader(comptime Reader: type) type {
 
             const read_len = try self.reader.read(self.buffer[current_len..]);
             // print("READ: current_len={} read_len={}\n", .{ current_len, read_len });
+
             self.current = self.buffer[0 .. current_len + read_len];
             self.all_read = read_len == 0;
 
@@ -169,7 +169,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
         pub fn init(reader: Reader, buffer: []u8, config: CsvConfig) !Self {
             return Self{
                 .config = config,
-                .terminalChars = [_]u8{ config.colSeparator, config.rowSeparator, '"' },
+                .terminalChars = [_]u8{ config.colSep, config.rowSep, '"' },
                 .reader = CsvReader(Reader).init(reader, buffer),
             };
         }
@@ -204,23 +204,23 @@ pub fn CsvTokenizer(comptime Reader: type) type {
 
                         if (c) |value| {
                             // print("END: {}\n", .{value});
-                            if (value == self.config.colSeparator) {
+                            if (value == self.config.colSep) {
                                 // TODO write repro for assert with optional
                                 // const colSep = try self.reader.char();
                                 // assert(colSep == self.config.colSeparator);
                                 const colSep = (try self.reader.char()).?;
-                                assert(colSep == self.config.colSeparator);
+                                assert(colSep == self.config.colSep);
 
                                 break :blk Status.Field;
                             }
 
-                            if (value == self.config.rowSeparator) {
+                            if (value == self.config.rowSep) {
                                 break :blk Status.RowEnd;
                             }
 
                             // quote means that it did not fit into buffer and it cannot be analyzed as ""
                             // TODO use config
-                            if (value == '"') {
+                            if (value == self.config.quote) {
                                 return CsvError.ShortBuffer;
                             }
                         } else {
@@ -236,7 +236,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                         }
 
                         const rowSep = try self.reader.char();
-                        assert(rowSep == self.config.rowSeparator);
+                        assert(rowSep == self.config.rowSep);
 
                         self.status = .RowStart;
 
@@ -260,7 +260,6 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             if (first != '"') {
                 var field = try self.reader.until(&self.terminalChars);
                 if (field == null) {
-                    // print("FIELD RETRY\n", .{});
                     // force read - maybe separator was not read yet
                     const hasData = try self.reader.read();
                     if (!hasData) {
@@ -275,13 +274,12 @@ pub fn CsvTokenizer(comptime Reader: type) type {
 
                 const terminator = (try self.reader.peek()).?;
 
-                // print("TERMINATOR: {}\n", .{terminator});
-                if (terminator == self.config.colSeparator) {
+                if (terminator == self.config.colSep) {
                     _ = try self.reader.char();
                     return CsvToken{ .field = field.? };
                 }
 
-                if (terminator == self.config.rowSeparator) {
+                if (terminator == self.config.rowSep) {
                     self.status = .RowEnd;
                     return CsvToken{ .field = field.? };
                 }
@@ -296,7 +294,6 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                 _ = try self.reader.char();
                 var quotedField = try self.reader.untilClosingQuote('"');
                 if (quotedField == null) {
-                    // print("QUOTED FIELD RETRY\n", .{});
                     // force read - maybe separator was not read yet
                     const hasData = try self.reader.read();
                     if (!hasData) {
