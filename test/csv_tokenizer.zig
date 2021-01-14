@@ -1,3 +1,8 @@
+//  Copyright (c) 2021 beho
+//
+//  This library is free software; you can redistribute it and/or modify it
+//  under the terms of the MIT license. See LICENSE for details.
+
 const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
