@@ -1,4 +1,4 @@
-# zig-csv
+# zig-csv ![CI](https://github.com/beho/zig-csv/workflows/CI/badge.svg)
 
 Low-level CSV parser library for [Zig language](https://github.com/ziglang/zig). Each non-empty line in input is parsed as one or more tokens of type `field`, followed by `row_end`.
 
