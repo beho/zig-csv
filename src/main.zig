@@ -19,7 +19,7 @@ pub const CsvToken = union(CsvTokenType) {
 pub const CsvError = error{ ShortBuffer, MisplacedQuote, NoSeparatorAfterField };
 
 pub const CsvConfig = struct {
-    colSep: u8 = ',', rowSep: u8 = '\n', quote: u8 = '"'
+    col_sep: u8 = ',', row_sep: u8 = '\n', quote: u8 = '"'
 };
 
 const QuoteFieldReadResult = struct {
@@ -164,103 +164,102 @@ fn CsvReader(comptime Reader: type) type {
 /// Tokenizes input from reader into stream of CsvTokens
 pub fn CsvTokenizer(comptime Reader: type) type {
     const Status = enum {
-        Initial, RowStart, Field, QuotedFieldEnd, RowEnd, Eof
+        initial, row_start, field, quoted_field_end, row_end, eof
     };
 
     return struct {
         const Self = @This();
 
         config: CsvConfig,
-        terminalChars: [3]u8 = undefined,
+        terminal_chars: [3]u8 = undefined,
 
         reader: CsvReader(Reader),
 
-        status: Status = .Initial,
+        status: Status = .initial,
 
         pub fn init(reader: Reader, buffer: []u8, config: CsvConfig) !Self {
             return Self{
                 .config = config,
-                .terminalChars = [_]u8{ config.colSep, config.rowSep, '"' },
+                .terminal_chars = [_]u8{ config.col_sep, config.row_sep, '"' },
                 .reader = CsvReader(Reader).init(reader, buffer),
             };
         }
 
         pub fn next(self: *Self) !?CsvToken {
-            var nextStatus: ?Status = self.status;
+            var next_status: ?Status = self.status;
 
             // Cannot use anonymous enum literals for Status
             // https://github.com/ziglang/zig/issues/4255
 
-            while (nextStatus) |status| {
+            while (next_status) |status| {
                 // print("STATUS: {}\n", .{self.status});
-                nextStatus = switch (status) {
-                    .Initial => if (try self.reader.read()) Status.RowStart else Status.Eof,
-                    .RowStart => if (!try self.reader.ensureData()) Status.Eof else Status.Field,
-                    .Field => blk: {
+                next_status = switch (status) {
+                    .initial => if (try self.reader.read()) Status.row_start else Status.eof,
+                    .row_start => if (!try self.reader.ensureData()) Status.eof else Status.field,
+                    .field => blk: {
                         if (!try self.reader.ensureData()) {
-                            break :blk .RowEnd;
+                            break :blk .row_end;
                         }
 
                         return try self.parseField();
                     },
-                    .QuotedFieldEnd => blk: {
+                    .quoted_field_end => blk: {
                         // read closing quotes
                         const quote = try self.reader.char();
                         assert(quote == self.config.quote);
 
                         if (!try self.reader.ensureData()) {
-                            break :blk Status.RowEnd;
+                            break :blk Status.row_end;
                         }
 
                         const c = (try self.reader.peek());
 
                         if (c) |value| {
                             // print("END: {}\n", .{value});
-                            if (value == self.config.colSep) {
+                            if (value == self.config.col_sep) {
                                 // TODO write repro for assert with optional
-                                // const colSep = try self.reader.char();
-                                // assert(colSep == self.config.colSeparator);
-                                const colSep = (try self.reader.char()).?;
-                                assert(colSep == self.config.colSep);
+                                // const col_sep = try self.reader.char();
+                                // assert(col_sep == self.config.col_sep);
+                                const col_sep = (try self.reader.char()).?;
+                                assert(col_sep == self.config.col_sep);
 
-                                break :blk Status.Field;
+                                break :blk Status.field;
                             }
 
-                            if (value == self.config.rowSep) {
-                                break :blk Status.RowEnd;
+                            if (value == self.config.row_sep) {
+                                break :blk Status.row_end;
                             }
 
                             // quote means that it did not fit into buffer and it cannot be analyzed as ""
-                            // TODO use config
                             if (value == self.config.quote) {
                                 return CsvError.ShortBuffer;
                             }
                         } else {
-                            break :blk Status.Eof;
+                            break :blk Status.eof;
                         }
 
                         return CsvError.NoSeparatorAfterField;
                     },
-                    .RowEnd => {
+                    .row_end => {
                         if (!try self.reader.ensureData()) {
-                            self.status = .Eof;
+                            self.status = Status.eof;
                             return CsvToken{ .row_end = {} };
                         }
 
                         const rowSep = try self.reader.char();
-                        assert(rowSep == self.config.rowSep);
+                        assert(rowSep == self.config.row_sep);
 
-                        self.status = .RowStart;
+                        self.status = Status.row_start;
 
                         return CsvToken{ .row_end = {} };
                     },
-                    .Eof => {
+                    .eof => {
                         return null;
                     },
                 };
 
-                // make the transition and also ensure that nextStatus is set at this point
-                self.status = nextStatus.?;
+                // make the transition and also ensure that next_status is set at this point
+                self.status = next_status.?;
             }
 
             unreachable;
@@ -270,7 +269,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             const first = (try self.reader.peek()).?;
 
             if (first != '"') {
-                var field = try self.reader.until(&self.terminalChars);
+                var field = try self.reader.until(&self.terminal_chars);
                 if (field == null) {
                     // force read - maybe separator was not read yet
                     const hasData = try self.reader.read();
@@ -278,7 +277,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                         return CsvError.ShortBuffer;
                     }
 
-                    field = try self.reader.until(&self.terminalChars);
+                    field = try self.reader.until(&self.terminal_chars);
                     if (field == null) {
                         return CsvError.ShortBuffer;
                     }
@@ -286,13 +285,13 @@ pub fn CsvTokenizer(comptime Reader: type) type {
 
                 const terminator = (try self.reader.peek()).?;
 
-                if (terminator == self.config.colSep) {
+                if (terminator == self.config.col_sep) {
                     _ = try self.reader.char();
                     return CsvToken{ .field = field.? };
                 }
 
-                if (terminator == self.config.rowSep) {
-                    self.status = .RowEnd;
+                if (terminator == self.config.row_sep) {
+                    self.status = .row_end;
                     return CsvToken{ .field = field.? };
                 }
 
@@ -304,8 +303,8 @@ pub fn CsvTokenizer(comptime Reader: type) type {
             } else {
                 // consume opening quote
                 _ = try self.reader.char();
-                var quotedField = try self.reader.untilClosingQuote(self.config.quote);
-                if (quotedField == null) {
+                var quoted_field = try self.reader.untilClosingQuote(self.config.quote);
+                if (quoted_field == null) {
                     // force read - maybe separator was not read yet
                     const hasData = try self.reader.read();
                     if (!hasData) {
@@ -313,15 +312,15 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                     }
 
                     // this read will fill the buffer
-                    quotedField = try self.reader.untilClosingQuote(self.config.quote);
-                    if (quotedField == null) {
+                    quoted_field = try self.reader.untilClosingQuote(self.config.quote);
+                    if (quoted_field == null) {
                         return CsvError.ShortBuffer;
                     }
                 }
 
-                self.status = .QuotedFieldEnd;
+                self.status = .quoted_field_end;
 
-                const field = quotedField.?;
+                const field = quoted_field.?;
                 if (!field.contains_quotes) {
                     return CsvToken{ .field = field.value };
                 } else {

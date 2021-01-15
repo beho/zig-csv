@@ -18,8 +18,8 @@ fn getTokenizer(file: std.fs.File, buffer: []u8, config: CsvConfig) !CsvTokenize
     return csv;
 }
 
-fn expectToken(comptime expected: CsvToken, maybeActual: ?CsvToken) !void {
-    if (maybeActual) |actual| {
+fn expectToken(comptime expected: CsvToken, maybe_actual: ?CsvToken) !void {
+    if (maybe_actual) |actual| {
         if (@enumToInt(expected) != @enumToInt(actual)) {
             std.log.warn("Expected {} but is {}\n", .{ expected, actual });
             return error.TestFailed;
@@ -32,7 +32,7 @@ fn expectToken(comptime expected: CsvToken, maybeActual: ?CsvToken) !void {
             else => {},
         }
     } else {
-        std.log.warn("Expected {} but is {}\n", .{ expected, maybeActual });
+        std.log.warn("Expected {} but is {}\n", .{ expected, maybe_actual });
         return error.TestFailed;
     }
 }
