@@ -7,7 +7,7 @@ Low-level CSV parser library for [Zig language](https://github.com/ziglang/zig).
 - Reads UTF-8 files.
 - Provides iterator interface to stream of tokens. 
 - Handles quoted fields in which column/row separator can be used. Quote itself can be used in field by doubling it (e.g. `"This is quote: ""."`)
-- Configurable column separator(default `,`), row separator (`\n`) and quote (`"`). 
+- Configurable column separator (default `,`), row separator (`\n`) and quote (`"`). 
     - **Currently only single byte characters.**
 - Parser does not allocate – caller provides a buffer that parser operates in. **Buffer must be longer than a longest field in input.**
 
