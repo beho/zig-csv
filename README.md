@@ -2,6 +2,8 @@
 
 Low-level CSV parser library for [Zig language](https://github.com/ziglang/zig). Each non-empty line in input is parsed as one or more tokens of type `field`, followed by `row_end`.
 
+*This library was conceived as Zig learning project and it was not used by me in production software.*
+
 ## Features
 
 - Reads UTF-8 files.
