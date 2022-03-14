@@ -9,21 +9,30 @@ const print = std.debug.print;
 const assert = std.debug.assert;
 
 pub const CsvTokenType = enum {
-    field, row_end
+    field,
+    row_end,
 };
 
 pub const CsvToken = union(CsvTokenType) {
-    field: []const u8, row_end: void
+    field: []const u8,
+    row_end: void,
 };
 
-pub const CsvError = error{ ShortBuffer, MisplacedQuote, NoSeparatorAfterField };
+pub const CsvError = error{
+    ShortBuffer,
+    MisplacedQuote,
+    NoSeparatorAfterField,
+};
 
 pub const CsvConfig = struct {
-    col_sep: u8 = ',', row_sep: u8 = '\n', quote: u8 = '"'
+    col_sep: u8 = ',',
+    row_sep: u8 = '\n',
+    quote: u8 = '"',
 };
 
 const QuoteFieldReadResult = struct {
-    value: []u8, contains_quotes: bool
+    value: []u8,
+    contains_quotes: bool,
 };
 
 fn CsvReader(comptime Reader: type) type {
@@ -164,7 +173,12 @@ fn CsvReader(comptime Reader: type) type {
 /// Tokenizes input from reader into stream of CsvTokens
 pub fn CsvTokenizer(comptime Reader: type) type {
     const Status = enum {
-        initial, row_start, field, quoted_field_end, row_end, eof
+        initial,
+        row_start,
+        field,
+        quoted_field_end,
+        row_end,
+        eof,
     };
 
     return struct {
