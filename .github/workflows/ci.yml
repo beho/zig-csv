@@ -2,7 +2,7 @@
 
 name: CI
 
-# Controls when the action will run. 
+# Controls when the action will run.
 on:
   # Triggers the workflow on push or pull request events but only for the main branch
   push:
@@ -18,16 +18,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: goto-bus-stop/setup-zig@v1
+      - uses: actions/checkout@v3
+      - uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.9.1
+          version: 0.10.1
       - run: zig build test
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: goto-bus-stop/setup-zig@v1
+      - uses: actions/checkout@v3
+      - uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.9.1
+          version: 0.10.1
       - run: zig fmt --check src/*.zig
