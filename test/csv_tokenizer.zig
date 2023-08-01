@@ -4,7 +4,6 @@
 //  under the terms of the MIT license. See LICENSE for details.
 
 const std = @import("std");
-const mem = std.mem;
 const testing = std.testing;
 const expect = testing.expect;
 const csv_mod = @import("csv");
@@ -20,7 +19,7 @@ fn getTokenizer(file: std.fs.File, buffer: []u8, config: csv_mod.CsvConfig) !csv
 fn expectToken(comptime expected: csv_mod.CsvToken, maybe_actual: ?csv_mod.CsvToken) !void {
     if (maybe_actual) |actual| {
         if (@enumToInt(expected) != @enumToInt(actual)) {
-            std.log.warn("Expected {} but is {}\n", .{ expected, actual });
+            std.log.warn("Expected {?} but is {?}\n", .{ expected, actual });
             return error.TestFailed;
         }
 
@@ -31,7 +30,7 @@ fn expectToken(comptime expected: csv_mod.CsvToken, maybe_actual: ?csv_mod.CsvTo
             else => {},
         }
     } else {
-        std.log.warn("Expected {} but is {}\n", .{ expected, maybe_actual });
+        std.log.warn("Expected {?} but is {?}\n", .{ expected, maybe_actual });
         return error.TestFailed;
     }
 }
@@ -46,19 +45,21 @@ test "Create iterator for file reader" {
 test "Read single simple record from file" {
     const file = try std.fs.cwd().openFile("test/resources/test-1.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, &default_buffer, .{});
+    var csv = try getTokenizer(file, &default_buffer, .{});
 
     try expectToken(csv_mod.CsvToken{ .field = "1" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .field = "abc" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .row_end = {} }, try csv.next());
 
-    try expect((try csv.next()) == null);
+    var next = csv.next() catch unreachable;
+
+    try expect(next == null);
 }
 
 test "Read multiple simple records from file" {
     const file = try std.fs.cwd().openFile("test/resources/test-2.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, &default_buffer, .{});
+    var csv = try getTokenizer(file, &default_buffer, .{});
 
     try expectToken(csv_mod.CsvToken{ .field = "1" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .field = "abc" }, try csv.next());
@@ -68,13 +69,15 @@ test "Read multiple simple records from file" {
     try expectToken(csv_mod.CsvToken{ .field = "def ghc" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .row_end = {} }, try csv.next());
 
-    try expect((try csv.next()) == null);
+    var next = csv.next() catch unreachable;
+
+    try expect(next == null);
 }
 
 test "Read quoted fields" {
     const file = try std.fs.cwd().openFile("test/resources/test-4.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, &default_buffer, .{});
+    var csv = try getTokenizer(file, &default_buffer, .{});
 
     try expectToken(csv_mod.CsvToken{ .field = "1" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .field = "def ghc" }, try csv.next());
@@ -84,77 +87,73 @@ test "Read quoted fields" {
     try expectToken(csv_mod.CsvToken{ .field = "abc \"def\"" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .row_end = {} }, try csv.next());
 
-    try expect((try csv.next()) == null);
+    var next = csv.next() catch unreachable;
+
+    try expect(next == null);
 }
 
 test "Second read is necessary to obtain field" {
     const file = try std.fs.cwd().openFile("test/resources/test-read-required-for-field.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, default_buffer[0..6], .{});
+    var csv = try getTokenizer(file, default_buffer[0..6], .{});
 
     try expectToken(csv_mod.CsvToken{ .field = "12345" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .field = "67890" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .row_end = {} }, try csv.next());
 
-    try expect((try csv.next()) == null);
+    var next = csv.next() catch unreachable;
+
+    try expect(next == null);
 }
 
 test "File is empty" {
     const file = try std.fs.cwd().openFile("test/resources/test-empty.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, &default_buffer, .{});
+    var csv = try getTokenizer(file, &default_buffer, .{});
 
-    try expect((try csv.next()) == null);
+    var next = csv.next() catch unreachable;
+
+    try expect(next == null);
 }
 
 test "Field is longer than buffer" {
     const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, default_buffer[0..9], .{});
+    var csv = try getTokenizer(file, default_buffer[0..9], .{});
 
-    const field1 = csv.next();
-    if (field1) {
-        unreachable;
-    } else |err| {
-        try expect(err == csv_mod.CsvError.ShortBuffer);
-    }
+    var next = csv.next();
+    try std.testing.expectError(csv_mod.CsvError.ShortBuffer, next);
 }
 
 test "Quoted field is longer than buffer" {
     const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer-quoted.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, default_buffer[0..10], .{});
+    var csv = try getTokenizer(file, default_buffer[0..10], .{});
 
-    const field1 = csv.next();
-    if (field1) {
-        unreachable;
-    } else |err| {
-        try expect(err == csv_mod.CsvError.ShortBuffer);
-    }
+    var next = csv.next();
+    try std.testing.expectError(csv_mod.CsvError.ShortBuffer, next);
 }
 
 test "Quoted field with double quotes is longer than buffer" {
     const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer-quoted-with-double.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, default_buffer[0..11], .{});
+    var csv = try getTokenizer(file, default_buffer[0..11], .{});
 
-    const field1 = csv.next();
-    if (field1) {
-        unreachable;
-    } else |err| {
-        try expect(err == csv_mod.CsvError.ShortBuffer);
-    }
+    var next = csv.next();
+    try std.testing.expectError(csv_mod.CsvError.ShortBuffer, next);
 }
 
 test "Quoted field with double quotes can be read on retry" {
     const file = try std.fs.cwd().openFile("test/resources/test-error-short-buffer-quoted-with-double.csv", .{});
     defer file.close();
-    const csv = &try getTokenizer(file, default_buffer[0..14], .{});
+    var csv = try getTokenizer(file, default_buffer[0..14], .{});
 
     try expectToken(csv_mod.CsvToken{ .field = "1234567890\"" }, try csv.next());
     try expectToken(csv_mod.CsvToken{ .row_end = {} }, try csv.next());
 
-    try expect((try csv.next()) == null);
+    var next = csv.next() catch unreachable;
+
+    try expect(next == null);
 }
 
 // TODO test last line with new line and without
