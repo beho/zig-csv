@@ -18,7 +18,7 @@ fn getTokenizer(file: std.fs.File, buffer: []u8, config: csv_mod.CsvConfig) !csv
 
 fn expectToken(comptime expected: csv_mod.CsvToken, maybe_actual: ?csv_mod.CsvToken) !void {
     if (maybe_actual) |actual| {
-        if (@enumToInt(expected) != @enumToInt(actual)) {
+        if (@intFromEnum(expected) != @intFromEnum(actual)) {
             std.log.warn("Expected {?} but is {?}\n", .{ expected, actual });
             return error.TestFailed;
         }

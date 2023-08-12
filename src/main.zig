@@ -83,7 +83,7 @@ fn CsvReader(comptime Reader: type) type {
                 return null;
             }
 
-            for (self.current) |c, pos| {
+            for (self.current, 0..) |c, pos| {
                 // TODO inline
                 for (terminators) |ct| {
                     if (c == ct) {
