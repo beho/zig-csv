@@ -7,21 +7,32 @@ pub fn build(b: *Builder) void {
     // means any target is allowed, and the default is native. Other options
     // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
 
-    // Standard release options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
-    const mode = b.standardReleaseOptions();
+    var csv_module = b.createModule(.{
+        .source_file = .{ .path = "src/main.zig" },
+    });
 
-    const lib = b.addStaticLibrary("csv", "src/main.zig");
-    lib.setTarget(target);
-    lib.setBuildMode(mode);
-    lib.install();
+    const lib = b.addStaticLibrary(.{
+        .name = "csv",
+        .root_source_file = .{ .path = "src/main.zig" },
+        .optimize = optimize,
+        .target = target,
+    });
+    b.installArtifact(lib);
 
-    var main_tests = b.addTest("test/csv_tokenizer.zig");
-    main_tests.addPackagePath("csv", "src/main.zig");
-    main_tests.setTarget(target);
-    main_tests.setBuildMode(mode);
+    const main_tests = b.addTest(.{
+        .name = "csv_tests",
+        .root_source_file = .{ .path = "test/csv_tokenizer.zig" },
+        .optimize = optimize,
+        .target = target,
+    });
+    main_tests.addModule("csv", csv_module);
+
+    const run_test_cmd = b.addRunArtifact(main_tests);
+    run_test_cmd.has_side_effects = true;
+    run_test_cmd.step.dependOn(b.getInstallStep());
 
     const test_step = b.step("test", "Run library tests");
-    test_step.dependOn(&main_tests.step);
+    test_step.dependOn(&run_test_cmd.step);
 }
