@@ -9,7 +9,7 @@ pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    var csv_module = b.createModule(.{
+    const csv_module = b.addModule("zig-csv", .{
         .source_file = .{ .path = "src/main.zig" },
     });
 
