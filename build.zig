@@ -1,7 +1,6 @@
 const std = @import("std");
-const Builder = std.build.Builder;
 
-pub fn build(b: *Builder) void {
+pub fn build(b: *std.Build) void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -10,7 +9,7 @@ pub fn build(b: *Builder) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const csv_module = b.addModule("zig-csv", .{
-        .source_file = .{ .path = "src/main.zig" },
+        .root_source_file = .{ .path = "src/main.zig" },
     });
 
     const lib = b.addStaticLibrary(.{
@@ -27,7 +26,7 @@ pub fn build(b: *Builder) void {
         .optimize = optimize,
         .target = target,
     });
-    main_tests.addModule("csv", csv_module);
+    main_tests.root_module.addImport("csv", csv_module);
 
     const run_test_cmd = b.addRunArtifact(main_tests);
     run_test_cmd.has_side_effects = true;

@@ -143,7 +143,7 @@ fn CsvReader(comptime Reader: type) type {
             }
 
             if (current_len > 0) {
-                mem.copy(u8, self.buffer, self.current);
+                mem.copyForwards(u8, self.buffer, self.current);
             }
 
             const read_len = try self.reader.read(self.buffer[current_len..]);
