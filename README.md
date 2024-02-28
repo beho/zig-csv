@@ -2,20 +2,20 @@
 
 Low-level CSV parser library for [Zig language](https://github.com/ziglang/zig). Each non-empty line in input is parsed as one or more tokens of type `field`, followed by `row_end`.
 
-*This library was conceived as Zig learning project and it was not used by me in production software.*
+_This library was conceived as Zig learning project and it was not used by me in production software._
 
 ## Features
 
 - Reads UTF-8 files.
-- Provides iterator interface to stream of tokens. 
+- Provides iterator interface to stream of tokens.
 - Handles quoted fields in which column/row separator can be used. Quote itself can be used in field by doubling it (e.g. `"This is quote: ""."`)
-- Configurable column separator (default `,`), row separator (`\n`) and quote (`"`). 
-    - **Currently only single byte characters.**
+- Configurable column separator (default `,`), row separator (`\n`) and quote (`"`).
+  - **Currently only single byte characters.**
 - Parser does not allocate – caller provides a buffer that parser operates in. **Buffer must be longer than a longest field in input.**
 
 ## Example
 
-Following code reads CSV tokens from a file while very naively printing them as table to standard output. 
+Following code reads CSV tokens from a file while very naively printing them as table to standard output.
 
 ```zig
 const std = @import("std");
@@ -39,7 +39,7 @@ pub fn main() anyerror!void {
     const file = try std.fs.cwd().openFile(args[1], .{});
     defer file.close();
 
-    const csv_tokenizer = &try csv.CsvTokenizer(std.fs.File.Reader).init(file.reader(), buffer, .{});
+    var csv_tokenizer = try csv.CsvTokenizer(std.fs.File.Reader).init(file.reader(), buffer, .{});
     const stdout = std.io.getStdOut().writer();
 
     while (try csv_tokenizer.next()) |token| {
