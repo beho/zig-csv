@@ -9,12 +9,12 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const csv_module = b.addModule("zig-csv", .{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
     });
 
     const lib = b.addStaticLibrary(.{
         .name = "csv",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .optimize = optimize,
         .target = target,
     });
@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
 
     const main_tests = b.addTest(.{
         .name = "csv_tests",
-        .root_source_file = .{ .path = "test/csv_tokenizer.zig" },
+        .root_source_file = b.path("test/csv_tokenizer.zig"),
         .optimize = optimize,
         .target = target,
     });
