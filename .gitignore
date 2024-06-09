@@ -6,3 +6,4 @@ zig-out/
 /build-*/
 /docgen_tmp/
 /.direnv/
+/.zig-cache/
