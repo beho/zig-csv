@@ -7,8 +7,7 @@
     nixpkgs.url = "github:nixos/nixpkgs/ff1a94e523ae9fb272e0581f068baee5d1068476";
     flake-utils.url = "github:numtide/flake-utils";
     zig.url = "github:mitchellh/zig-overlay";
-    # target ZLS master until ZLS release targeting Zig 0.12 is available
-    zls.url = "github:zigtools/zls";
+    zls.url = "github:zigtools/zls?ref=refs/tags/0.13.0";
   };
 
   outputs = {
@@ -33,7 +32,7 @@
         in rec {
           devShells.default = pkgs.mkShell {
             nativeBuildInputs = [
-              pkgs.zigpkgs."0.12.0"
+              pkgs.zigpkgs."0.13.0"
             ];
             buildInputs = [
               pkgs.zlspkgs.zls
